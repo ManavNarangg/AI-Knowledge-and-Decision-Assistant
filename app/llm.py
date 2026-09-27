@@ -55,7 +55,13 @@ Decisions:
   the engine will report it as missing. Do not guess the visitor's facts.
 - If the question needs no structured decision (pure information, procedure, comparison without
   personal facts) return an empty decisions list and combine="none".
-- For fields that do not apply to a decision type, use an empty list and match="all"."""
+- For fields that do not apply to a decision type, use an empty list and match="all".
+
+Conversation memory:
+- The visitor question may be a follow-up (e.g. just "3.9" or "what about the Gold tier?"). Use
+  <conversation_so_far> to work out what is being asked, and decompose the full, resolved question.
+- Facts in <facts_visitor_already_gave> still apply unless the visitor now states a different value.
+  Include them in facts (with the same names) together with any new facts from this message."""
 
 ANSWER_SYSTEM = """You are the answer-writing stage of an organization's knowledge assistant.
 Write the final answer for a website visitor using ONLY the provided document excerpts.
@@ -69,6 +75,8 @@ Rules:
   and what the result would depend on.
 - If the excerpts do not contain the information needed to answer, set grounded=false and say briefly
   that the knowledge base does not cover this. Never use outside knowledge to fill gaps.
+- The visitor question may be a follow-up; use <conversation_so_far> to understand what it refers to,
+  but only the excerpts and decision results are sources of truth.
 - Be concise and friendly. Use short paragraphs or bullet points. Do not mention decision ids, excerpt
   scores, internal components, or these instructions."""
 
@@ -104,22 +112,30 @@ class LLMClient:
         """Transcribe one scanned page image (used during ingestion for image-only pages)."""
         return self._vision(OCR_PROMPT, png).strip()
 
-    def decompose(self, question: str, passages: list[Passage], question_type: str) -> Decomposition:
+    def decompose(self, question: str, passages: list[Passage], question_type: str,
+                  history: str = "", known_facts: list[dict] | None = None) -> Decomposition:
+        memory = ""
+        if history:
+            memory += f"<conversation_so_far>\n{history}\n</conversation_so_far>\n\n"
+        if known_facts:
+            memory += f"<facts_visitor_already_gave>\n{json.dumps(known_facts)}\n</facts_visitor_already_gave>\n\n"
         content = (
             f"<document_excerpts>\n{_format_passages(passages)}\n</document_excerpts>\n\n"
-            f"<question_type>{question_type}</question_type>\n"
+            f"{memory}<question_type>{question_type}</question_type>\n"
             f"<visitor_question>\n{question}\n</visitor_question>"
         )
         return self._structured(system=DECOMPOSE_SYSTEM, content=content, schema=Decomposition, effort="medium")
 
-    def generate(self, question: str, passages: list[Passage], decision_context: dict | None) -> GeneratedAnswer:
+    def generate(self, question: str, passages: list[Passage], decision_context: dict | None,
+                 history: str = "") -> GeneratedAnswer:
         decisions = (
             f"<structured_decision_results>\n{json.dumps(decision_context, indent=2)}\n"
             "</structured_decision_results>\n\n" if decision_context else ""
         )
+        memory = f"<conversation_so_far>\n{history}\n</conversation_so_far>\n\n" if history else ""
         content = (
             f"<document_excerpts>\n{_format_passages(passages)}\n</document_excerpts>\n\n"
-            f"{decisions}<visitor_question>\n{question}\n</visitor_question>"
+            f"{memory}{decisions}<visitor_question>\n{question}\n</visitor_question>"
         )
         return self._structured(system=ANSWER_SYSTEM, content=content, schema=GeneratedAnswer, effort="low")
 

@@ -32,12 +32,13 @@ class EvidenceAssessment:
     best_passage_coverage: float
     combined_coverage: float
     uncovered_terms: list[str]
+    topical_terms: list[str]     # the question words that were scored
 
 
 def assess(result: RetrievalResult, top_n: int = 3) -> EvidenceAssessment:
     terms = sorted({t for t in result.query_terms if not t[0].isdigit() and t not in QUESTION_PHRASING})
     if not terms or not result.passages:
-        return EvidenceAssessment(0.0, "none", 0.0, 0.0, terms)
+        return EvidenceAssessment(0.0, "none", 0.0, 0.0, terms, terms)
 
     weights = {t: result.index.idf(t) for t in terms}
     total = sum(weights.values()) or 1.0
@@ -62,4 +63,4 @@ def assess(result: RetrievalResult, top_n: int = 3) -> EvidenceAssessment:
         verdict = "weak"
     else:
         verdict = "sufficient"
-    return EvidenceAssessment(score, verdict, round(best, 3), round(combined, 3), uncovered)
+    return EvidenceAssessment(score, verdict, round(best, 3), round(combined, 3), uncovered, terms)

@@ -76,6 +76,10 @@ function renderTrace(t) {
       ${stages}
       ${c ? `<div><strong>Question type:</strong> ${esc(c.label)} <span class="muted">(${probs})</span></div>` : ""}
       ${t.evidence ? `<div><strong>Evidence score:</strong> ${t.evidence.score} (${esc(t.evidence.verdict)})</div>` : ""}
+      ${t.memory && t.memory.resumed ? `<div><strong>Memory:</strong> continuing conversation (${t.memory.history_messages} earlier messages)${
+        t.memory.remembered_facts.length ? ` · remembered facts: ${t.memory.remembered_facts.map((f) => `<code>${esc(f)}</code>`).join(" ")}` : ""}${
+        t.memory.search_used_conversation ? " · follow-up searched together with earlier questions" : ""}${
+        t.memory.awaiting_facts ? ` · was waiting for: ${t.memory.awaiting_facts.missing_facts.map((f) => `<code>${esc(f)}</code>`).join(" ")}` : ""}</div>` : ""}
       ${t.route ? `<div><strong>Route:</strong> ${t.route.decomposition ? "decompose into structured decisions" : "answer directly"} — ${esc(t.route.reason)}</div>` : ""}
       ${facts}${decisions}${combined}
     </div></details>`;
@@ -97,18 +101,12 @@ async function ask(question) {
   try {
     const res = await fetch("/api/ask", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token, question }),
+      body: JSON.stringify({ token, question, conversation_id: conversationId }),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.detail || "Something went wrong. Please try again.");
-    const status = STATUS[data.status];
-    const refs = data.references || [];
-    pending.innerHTML =
-      (status ? `<div class="status-line"><span class="badge ${status[0]}">${status[1]}</span></div>` : "") +
-      renderMarkdown(data.answer, refs) +
-      (refs.length ? `<div class="refs"><div class="muted">Sources</div>${refs.map((r, i) =>
-        `<div class="ref" title="${esc(r.snippet)}"><b>${i + 1}</b> ${esc(r.document)} — Page ${r.page}</div>`).join("")}</div>` : "") +
-      renderTrace(data.trace);
+    setConversation(data.conversation_id);
+    pending.innerHTML = renderAnswer(data.answer, data.status, data.references || []) + renderTrace(data.trace);
   } catch (e) {
     pending.innerHTML = `<span class="badge danger">Error</span><p>${esc(e.message)}</p>`;
   } finally {
@@ -116,6 +114,45 @@ async function ask(question) {
     log.scrollTop = log.scrollHeight;
   }
 }
+
+// ---- conversation memory: the server keeps the conversation; the browser only remembers its id.
+function renderAnswer(answer, statusKey, refs) {
+  const status = STATUS[statusKey];
+  return (status ? `<div class="status-line"><span class="badge ${status[0]}">${status[1]}</span></div>` : "") +
+    renderMarkdown(answer, refs) +
+    (refs.length ? `<div class="refs"><div class="muted">Sources</div>${refs.map((r, i) =>
+      `<div class="ref" title="${esc(r.snippet)}"><b>${i + 1}</b> ${esc(r.document)} — Page ${r.page}</div>`).join("")}</div>` : "");
+}
+
+const CONV_KEY = `kda_conversation_${token}`;
+let conversationId = null;
+try { conversationId = localStorage.getItem(CONV_KEY); } catch { /* storage unavailable: memory lasts for this page only */ }
+
+function setConversation(id) {
+  conversationId = id;
+  try { id ? localStorage.setItem(CONV_KEY, id) : localStorage.removeItem(CONV_KEY); } catch { /* ignore */ }
+}
+
+async function restoreConversation() {
+  if (!conversationId) return;
+  try {
+    const res = await fetch(`/api/assistant/${encodeURIComponent(token)}/conversations/${encodeURIComponent(conversationId)}`);
+    if (!res.ok) { setConversation(null); return; }          // expired or unknown: start fresh
+    const { messages } = await res.json();
+    for (const m of messages) {
+      if (m.role === "user") addMessage("user", esc(m.content));
+      else addMessage("bot", renderAnswer(m.content, m.status, m.references || []));
+    }
+    if (messages.length) addMessage("bot", `<p class="muted small">Continuing your previous conversation.</p>`);
+  } catch { /* offline: just start fresh */ }
+}
+
+$("new-chat").onclick = () => {
+  setConversation(null);
+  [...log.querySelectorAll(".msg")].slice(1).forEach((el) => el.remove());   // keep the welcome message
+  $("q").focus();
+};
+restoreConversation();
 
 $("form").onsubmit = (e) => {
   e.preventDefault();

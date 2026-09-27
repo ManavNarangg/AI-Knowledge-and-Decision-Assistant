@@ -647,6 +647,70 @@ In the chat UI, **"How this answer was produced"** shows this `trace`: each step
 
 ---
 
+## Part 2b: Conversation memory (continuing a chat)
+
+### In plain words
+
+The assistant remembers each chat, so visitors don't have to repeat themselves:
+
+```
+Visitor: Am I eligible for the Merit Scholarship? I'm a third-year full-time student.
+Bot:     I still need your GPA.                       ← GPA check = unknown; remembers "waiting for GPA"
+Visitor: 3.9
+Bot:     Yes, you're eligible!                        ← year + full-time come from memory
+Visitor: How do I apply for it?
+Bot:     Log in to the Student Portal…                ← "it" = the Merit Scholarship
+```
+
+Three things are remembered per conversation:
+1. **The last few messages**, so the AI understands follow-ups like "it" or "what about Gold tier?"
+2. **The facts the visitor gave** (GPA, year…), reused by the rule checkers later.
+3. **What we're waiting for**: if the last answer asked for missing facts, the next message is treated as the answer.
+
+### In the code
+
+**Storage:** two tables (`conversations`, `messages`) and [app/conversations.py](app/conversations.py):
+
+```python
+conv = load_or_start(org_id, conversation_id)   # resume only if the id exists, is < 7 days old AND
+                                                # belongs to this org; otherwise start a new one
+history = format_history(conv.history)          # last 6 messages, as "Visitor: …" / "Assistant: …"
+...
+save_turn(conv, question, answer, status, references)   # store both messages + facts + pending
+```
+
+**Follow-up search** ([pipeline.py](app/pipeline.py), `answer_question()`):
+
+```python
+retrieval = retrieve(org_id, question)          # first, search the message on its own
+evidence = assess(retrieval)
+if conv.history and evidence.verdict != "sufficient" and (conv.pending or len(evidence.topical_terms) <= 2):
+    context_query = " ".join([*conv.recent_user_questions(2), question])   # e.g. "Am I eligible…? 3.9"
+    ctx = retrieve(org_id, context_query)
+    if assess(ctx).score > evidence.score:
+        retrieval = ctx                          # the conversation made the search better → use it
+```
+
+A short follow-up like "3.9" matches nothing on its own, so it's searched together with the previous question. A complete new question ("How do I appeal?") is searched alone, so old context doesn't pollute it.
+
+**Waiting decisions and fact memory:**
+
+```python
+needs_decisions = label in {"decision", "comparison"} or confidence < 0.55 or conv.pending is not None
+decomposition = llm.decompose(question, passages, label, history, list(conv.facts.values()))
+conv.facts = remember_facts(conv.facts, decomposition.facts)          # old facts + new (new wins)
+decomposition.facts = [Fact(**f) for f in conv.facts.values()]       # evaluators see everything
+...
+if combined.overall == "insufficient_information":
+    conv.pending = {"question": ..., "missing_facts": combined.missing_facts}   # ask, and remember why
+```
+
+**The chat UI** ([static/assistant.js](static/assistant.js)) stores only the conversation id, in `localStorage` per assistant. On reload it calls `GET /api/assistant/{token}/conversations/{id}` to redraw the chat. **New chat** forgets the id.
+
+**Isolation:** every query uses `WHERE id = ? AND org_id = ?`, so another organization's conversation id is simply treated as unknown. This is tested in [tests/test_memory.py](tests/test_memory.py).
+
+---
+
 ## Part 3: When something goes wrong
 
 | Problem | What happens | Code |
@@ -679,7 +743,8 @@ In the chat UI, **"How this answer was produced"** shows this `trace`: each step
 |---|---|---|
 | [app/main.py](app/main.py) | Web routes (the front door) | `ask()`, `upload_document()`, `register()`, `login()` |
 | [app/auth.py](app/auth.py) | Logins, sessions, tokens | `org_for_assistant_token()`, `require_admin()`, `create_session()` |
-| [app/pipeline.py](app/pipeline.py) | **The conductor** (steps ①–⑨) | `answer_question()`, `_decision_context()`, `_references()` |
+| [app/pipeline.py](app/pipeline.py) | **The conductor** (steps ①–⑨) | `answer_question()`, `_decision_context()`, `_references()`, `remember_facts()` |
+| [app/conversations.py](app/conversations.py) | Conversation memory | `load_or_start()`, `save_turn()`, `transcript()`, `format_history()` |
 | [app/retrieval.py](app/retrieval.py) | BM25 search | `tokenize()`, `get_index()`, `BM25Index.score()`, `expand()`, `retrieve()` |
 | [app/system1/classifier.py](app/system1/classifier.py) | Question type | `features()`, `QuestionClassifier.predict()` |
 | [app/system1/evidence.py](app/system1/evidence.py) | Evidence check | `assess()` |
@@ -699,7 +764,7 @@ In the chat UI, **"How this answer was produced"** shows this `trace`: each step
 
 **Organizers** (need to be logged in): `POST /api/auth/register`, `POST /api/auth/login`, `POST /api/auth/logout`, `GET/POST /api/admin/documents`, `POST /api/admin/documents/{id}/replace`, `DELETE /api/admin/documents/{id}`, `GET /api/admin/assistant`, `POST /api/admin/assistant/regenerate`, `GET /api/admin/usage`.
 
-**Visitors** (token only): `GET /a/{token}` (chat page), `GET /api/assistant/{token}` (organization name only), `POST /api/ask`.
+**Visitors** (token only): `GET /a/{token}` (chat page), `GET /api/assistant/{token}` (organization name only), `GET /api/assistant/{token}/conversations/{id}` (restore a chat), `POST /api/ask` (send `conversation_id` to continue a chat).
 
 ```http
 POST /api/ask

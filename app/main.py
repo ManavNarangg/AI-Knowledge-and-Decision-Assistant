@@ -10,7 +10,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import auth
+from . import auth, conversations
 from .config import settings
 from .db import get_conn, init_db
 from .documents import DocumentError, delete_document, ingest_pdf, list_documents
@@ -209,6 +209,7 @@ def usage(admin: dict = Depends(auth.require_admin)):
 class AskBody(BaseModel):
     token: str
     question: str
+    conversation_id: str | None = None      # omit to start a new conversation
 
 
 _ask_log: dict[str, deque] = defaultdict(deque)
@@ -230,6 +231,16 @@ def assistant_public_info(token: str):
     return {"org_name": org["org_name"]}
 
 
+@app.get("/api/assistant/{token}/conversations/{conversation_id}")
+def conversation_messages(token: str, conversation_id: str):
+    """Transcript for re-displaying a visitor's conversation. Scoped to the token's organization."""
+    org = auth.org_for_assistant_token(token)
+    messages = conversations.transcript(org["org_id"], conversation_id)
+    if messages is None:
+        raise HTTPException(404, "This conversation has expired. Please start a new one.")
+    return {"conversation_id": conversation_id, "messages": messages}
+
+
 @app.post("/api/ask")
 async def ask(body: AskBody, request: Request):
     org = auth.org_for_assistant_token(body.token.strip())
@@ -242,7 +253,7 @@ async def ask(body: AskBody, request: Request):
     if _rate_limited(f"{body.token}:{client}"):
         raise HTTPException(429, "You're asking questions too quickly. Please wait a moment.")
     try:
-        return await answer_question(org["org_id"], org["org_name"], question)
+        return await answer_question(org["org_id"], org["org_name"], question, body.conversation_id)
     except Exception:
         log.exception("ask pipeline failed")
         raise HTTPException(500, "Something went wrong while answering. Please try again.")

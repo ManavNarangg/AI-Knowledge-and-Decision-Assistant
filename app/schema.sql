@@ -45,6 +45,28 @@ CREATE TABLE IF NOT EXISTS chunks (
 );
 CREATE INDEX IF NOT EXISTS idx_chunks_org ON chunks(org_id);
 
+-- Visitor conversations (memory). Bound to one organization; ids are random and unguessable.
+CREATE TABLE IF NOT EXISTS conversations (
+    id         TEXT PRIMARY KEY,
+    org_id     TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    state      TEXT NOT NULL DEFAULT '{}',   -- JSON: remembered visitor facts + pending decision
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_conversations_org ON conversations(org_id);
+
+CREATE TABLE IF NOT EXISTS messages (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+    org_id          TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    role            TEXT NOT NULL,           -- user | assistant
+    content         TEXT NOT NULL,
+    status          TEXT,                    -- assistant messages: answered | unable_to_answer | ...
+    references_json TEXT,                    -- assistant messages: cited document/page list
+    created_at      TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id, id);
+
 CREATE TABLE IF NOT EXISTS questions (
     id            TEXT PRIMARY KEY,
     org_id        TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,

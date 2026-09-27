@@ -80,7 +80,7 @@ The demo page is served from a different origin (port 5500) to show that cross-s
 
 ### Tests and evaluation
 ```bash
-python -m pytest -q                    # 56 tests: isolation, limits/errors, System 1 models, pipeline, LLM providers (all mocked, no key needed)
+python -m pytest -q                    # 61 tests: isolation, limits/errors, System 1 models, pipeline, LLM providers (all mocked, no key needed)
 python -m scripts.run_test_questions   # runs the 16 sample questions through the real pipeline (needs an LLM key)
 ```
 
@@ -136,7 +136,7 @@ Visitor question
  6. [System 1]   evaluate every DecisionSpec (Boolean / Choice / Score)                (in parallel)
  7. [App logic]  combine with three-valued logic; collect missing facts; flag failures
  8. [LLM]        write the answer from passages + the authoritative decision results, citing [S#]
- 9. [App logic]  map citations -> document + page references; log usage; return answer + trace
+ 9. [App logic]  map citations -> document + page references; log usage; save the turn to the conversation
 ```
 Every response includes a `trace`, shown in the chat under "How this answer was produced". It lists each stage, which component ran it (LLM / System 1 / App logic) and its latency. It also shows the classifier probabilities, the extracted facts, each decision with its per-condition results, and the combined outcome. The trace documents architecture and data flow, not model chain-of-thought.
 
@@ -207,6 +207,20 @@ Decisions are evaluated **in parallel** (`asyncio.gather`). Each one is isolated
 
 With `$6,000` instead of `$4,000`, D5 becomes FALSE and the overall result becomes **no**. The LLM output didn't change the verdict; the rule did.
 
+### Conversation memory
+Visitors can continue a conversation. The chat remembers it across page reloads, and **New chat** starts over.
+- **Transcript:** each conversation (`conversations` + `messages` tables) keeps the recent turns. The last 6 messages are given to both LLM stages so follow-ups like "what about the Gold tier?" or "how do I apply for it?" are understood.
+- **Fact memory:** facts the visitor stated (`gpa=3.9`, `year_of_study=3`, …) are stored in the conversation and merged into every later decision, with new values overriding old ones. The System 1 evaluators then use them deterministically.
+- **Waiting decisions:** when the outcome is `insufficient_information`, the conversation records which facts are missing. The visitor's next message (even just "3.9") is routed back into the decision.
+- **Follow-up search:** a message that can't stand alone (like "3.9") is searched together with the recent questions. A complete new question is searched on its own, so a topic change isn't polluted by old context.
+- **Isolation:** a conversation belongs to one organization. An id that is unknown, older than 7 days or from another organization is ignored, and a new conversation is started.
+
+Live example (Gemini):
+1. "Am I eligible…? I'm a third-year full-time student" → GPA unknown, so the assistant asks for it.
+2. "My GPA is 3.9" → **Yes** (year and full-time come from memory).
+3. "What if it were 3.6?" → still eligible, **Bronze**.
+4. "How do I apply for it?" → the application steps.
+
 ### Why this split
 - **Correctness and auditability.** Threshold comparisons and AND/OR logic are exactly where LLMs are unreliable, and they are trivial for code. Each verdict can be traced to a condition and a page.
 - **Grounding.** There are two layers. The System 1 evidence gate refuses clearly off-topic questions before any LLM call. The answer LLM independently reports `grounded=false` when the passages don't answer the question. Both give "not in the knowledge base", never an invented answer.
@@ -256,7 +270,8 @@ With `$6,000` instead of `$4,000`, D5 becomes FALSE and the overall result becom
 | POST | `/api/admin/assistant/regenerate` | session | Rotate the assistant token |
 | GET | `/api/admin/usage` | session | Counts (asked / answered / not in KB / review / errors) and recent questions |
 | GET | `/api/assistant/{token}` | token | Public info (org name only) |
-| POST | `/api/ask` | token | `{token, question}` → `{status, answer, references[], error, latency_ms, trace}` |
+| GET | `/api/assistant/{token}/conversations/{id}` | token | Transcript of a conversation, for restoring the chat (404 if unknown, expired or another org's) |
+| POST | `/api/ask` | token | `{token, question, conversation_id?}` → `{status, answer, references[], error, latency_ms, conversation_id, trace}` |
 | GET | `/a/{token}` · `/embed.js` | token | Visitor chat page · embed script |
 
 `status` is one of `answered`, `unable_to_answer`, `needs_review` or `error`.
@@ -309,6 +324,6 @@ Both have regression tests. This is the architecture paying off: the fault was d
 | Synchronous ingestion | Background job queue with a processing status for larger files |
 | SQLite, in-memory rate limit and index cache | Postgres with row-level security per tenant, Redis, object storage for PDFs (S3 + KMS) |
 | Simple auth | Email verification, password reset, MFA/SSO, multiple users and roles per org, CSRF tokens, audit log |
-| Single-turn chat | Conversation memory so visitors can answer "what's your GPA?" follow-ups |
+| Fact memory trusts the LLM to reuse fact names (`gpa` vs `cumulative_gpa`), and a hypothetical ("what if my GPA were 3.6?") updates the remembered value | Canonical fact vocabulary per tenant; mark hypothetical facts as turn-only |
 | No human-review queue | Dashboard inbox for `needs_review` / `unable_to_answer` questions, with feedback on answers |
 | Assistant token embedded in public pages | Optional per-token allowed-origin lists and signed short-lived session tokens for embeds |

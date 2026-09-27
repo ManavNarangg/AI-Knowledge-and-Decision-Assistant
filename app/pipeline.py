@@ -1,6 +1,6 @@
 """Question-processing pipeline (application logic / orchestration).
 
- Visitor question
+ Visitor question (+ conversation memory: recent turns and remembered facts)
    -> [tenant]      assistant token -> organization (done by the API layer)
    -> [System 1]    retrieval (BM25, org-scoped)  ||  question-type classifier     (parallel)
    -> [System 1]    evidence-sufficiency score  -- "none" -> answer "not in KB", no LLM call
@@ -17,12 +17,13 @@ import time
 import uuid
 
 from .combiner import combine, split_compound_decisions
+from .conversations import format_history, load_or_start, save_turn
 from .db import get_conn, utcnow
 from .llm import LLMError, get_llm
 from .retrieval import retrieve
-from .schemas import Decomposition
+from .schemas import Decomposition, Fact
 from .system1.classifier import classifier
-from .system1.decisions import run_decisions
+from .system1.decisions import normalize_name, run_decisions
 from .system1.evidence import assess
 
 DECISION_ROUTES = {"decision", "comparison"}
@@ -97,6 +98,14 @@ def _references(passages, cited_ids: set[str]) -> list[dict]:
     return list(by_page.values())
 
 
+def remember_facts(known: dict[str, dict], new: list[Fact]) -> dict[str, dict]:
+    """Merge this turn's facts into the conversation's fact memory (a new value overrides an old one)."""
+    merged = dict(known)
+    for fact in new:
+        merged[normalize_name(fact.name)] = {**fact.model_dump(), "name": normalize_name(fact.name)}
+    return merged
+
+
 def _log(org_id: str, question: str, status: str, qtype: str | None, latency_ms: int) -> None:
     with get_conn() as conn:
         conn.execute(
@@ -106,17 +115,22 @@ def _log(org_id: str, question: str, status: str, qtype: str | None, latency_ms:
         )
 
 
-async def answer_question(org_id: str, org_name: str, question: str) -> dict:
+async def answer_question(org_id: str, org_name: str, question: str, conversation_id: str | None = None) -> dict:
     started = time.perf_counter()
     sw = Stopwatch()
-    trace: dict = {"organization": org_name, "llm_calls": 0}
+    conv = load_or_start(org_id, conversation_id)          # memory: transcript + remembered facts
+    history = format_history(conv.history)
+    trace: dict = {"organization": org_name, "llm_calls": 0,
+                   "memory": {"resumed": not conv.is_new, "history_messages": len(conv.history),
+                              "remembered_facts": sorted(conv.facts), "awaiting_facts": conv.pending}}
 
     def finish(status: str, answer: str, references: list[dict], error: str | None = None) -> dict:
         latency = int((time.perf_counter() - started) * 1000)
         trace["stages"] = sw.stages
         _log(org_id, question, status, trace.get("classification", {}).get("label"), latency)
-        return {"status": status, "answer": answer, "references": references,
-                "error": error, "latency_ms": latency, "trace": trace}
+        save_turn(conv, question, answer, status, references)
+        return {"status": status, "answer": answer, "references": references, "error": error,
+                "latency_ms": latency, "conversation_id": conv.id, "trace": trace}
 
     t = time.perf_counter()
     reply = small_talk_reply(question, org_name)
@@ -131,6 +145,20 @@ async def answer_question(org_id: str, org_name: str, question: str) -> dict:
         asyncio.to_thread(retrieve, org_id, question, TOP_K_COMPARISON),
         asyncio.to_thread(classifier.predict, question),
     )
+    evidence = assess(retrieval)
+
+    # Memory-aware search: a follow-up that can't stand alone ("3.9", "and part-time?") is searched
+    # together with the recent questions. A complete new question is searched on its own, so an
+    # unrelated topic is not polluted by old context.
+    context_used = False
+    if conv.history and evidence.verdict != "sufficient" and (conv.pending or len(evidence.topical_terms) <= 2):
+        context_query = " ".join([*conv.recent_user_questions(2), question])
+        ctx_retrieval = await asyncio.to_thread(retrieve, org_id, context_query, TOP_K_COMPARISON)
+        ctx_evidence = assess(ctx_retrieval)
+        if ctx_evidence.score > evidence.score:
+            retrieval, evidence, context_used = ctx_retrieval, ctx_evidence, True
+    trace["memory"]["search_used_conversation"] = context_used
+
     if classification.label != "comparison":
         retrieval.passages = retrieval.passages[:TOP_K]
         retrieval.passage_terms = retrieval.passage_terms[:TOP_K]
@@ -142,8 +170,6 @@ async def answer_question(org_id: str, org_name: str, question: str) -> dict:
                           for p in passages]
 
     # 2. Evidence gate: refuse early rather than let an LLM improvise.
-    t = time.perf_counter()
-    evidence = assess(retrieval)
     sw.add("evidence sufficiency score", "System 1", t, score=evidence.score, verdict=evidence.verdict)
     trace["evidence"] = evidence.__dict__
     if evidence.verdict == "none":
@@ -154,10 +180,13 @@ async def answer_question(org_id: str, org_name: str, question: str) -> dict:
     decision_context = None
     decision_sources: set[str] = set()
 
-    # 3. Routing: only decision-shaped (or uncertain) questions pay for decomposition.
-    needs_decisions = classification.label in DECISION_ROUTES or classification.confidence < ROUTE_CONFIDENCE
+    # 3. Routing: decision-shaped (or uncertain) questions pay for decomposition. If the previous
+    #    answer asked for missing facts, this message is treated as the reply to that decision.
+    needs_decisions = (classification.label in DECISION_ROUTES or classification.confidence < ROUTE_CONFIDENCE
+                       or conv.pending is not None)
     trace["route"] = {"decomposition": needs_decisions,
-                      "reason": (f"classified as '{classification.label}'" if classification.label in DECISION_ROUTES
+                      "reason": ("continuing a decision that was waiting for facts" if conv.pending
+                                 else f"classified as '{classification.label}'" if classification.label in DECISION_ROUTES
                                  else f"low classifier confidence ({classification.confidence:.2f})" if needs_decisions
                                  else f"'{classification.label}' question answered directly from passages")}
 
@@ -165,13 +194,20 @@ async def answer_question(org_id: str, org_name: str, question: str) -> dict:
         t = time.perf_counter()
         try:
             trace["llm_calls"] += 1
-            decomposition = await asyncio.to_thread(llm.decompose, question, passages, classification.label)
+            decomposition = await asyncio.to_thread(llm.decompose, question, passages, classification.label,
+                                                    history, list(conv.facts.values()))
             sw.add("question decomposition", "LLM", t, decisions=len(decomposition.decisions))
             trace["decomposition"] = decomposition.model_dump()
         except LLMError as exc:
             sw.add("question decomposition", "LLM", t, error=str(exc))
             degraded_reasons.append("decomposition failed")
             decomposition = None
+
+        if decomposition is not None:
+            # Fact memory: facts from earlier turns + this turn (new values win).
+            conv.facts = remember_facts(conv.facts, decomposition.facts)
+            decomposition = decomposition.model_copy(update={"facts": [Fact(**f) for f in conv.facts.values()]})
+            conv.pending = None
 
         if decomposition and decomposition.decisions:
             t = time.perf_counter()
@@ -186,6 +222,10 @@ async def answer_question(org_id: str, org_name: str, question: str) -> dict:
             trace["combined"] = combined.to_dict()
             if combined.needs_review:
                 degraded_reasons.append("decision model failure")
+            if combined.overall == "insufficient_information":
+                # Remember what we're waiting for, so the visitor's next message can complete it.
+                conv.pending = {"question": decomposition.restated_question or question,
+                                "missing_facts": combined.missing_facts}
             decision_context = _decision_context(decomposition, results, combined)
             decision_sources = {s for r in results for s in r.sources}
 
@@ -193,7 +233,7 @@ async def answer_question(org_id: str, org_name: str, question: str) -> dict:
     t = time.perf_counter()
     try:
         trace["llm_calls"] += 1
-        generated = await asyncio.to_thread(llm.generate, question, passages, decision_context)
+        generated = await asyncio.to_thread(llm.generate, question, passages, decision_context, history)
         sw.add("answer generation", "LLM", t, grounded=generated.grounded)
     except LLMError as exc:
         sw.add("answer generation", "LLM", t, error=str(exc))

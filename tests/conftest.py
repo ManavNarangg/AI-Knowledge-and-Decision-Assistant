@@ -35,8 +35,9 @@ class FakeLLM:
         self.fail_ocr = False
         self.grounded = True
 
-    def decompose(self, question, passages, question_type):
-        self.calls.append({"stage": "decompose", "question": question, "files": {p.filename for p in passages}})
+    def decompose(self, question, passages, question_type, history="", known_facts=None):
+        self.calls.append({"stage": "decompose", "question": question, "files": {p.filename for p in passages},
+                           "history": history, "known_facts": known_facts or []})
         if self.fail_decompose:
             raise LLMError("decomposition unavailable")
         return self.decompositions.get(
@@ -48,8 +49,8 @@ class FakeLLM:
             raise LLMError("vision model unavailable.")
         return "Campus parking notice. Student parking permits cost $120 per semester. Overnight parking only in Lot C."
 
-    def generate(self, question, passages, decision_context):
-        self.calls.append({"stage": "generate", "question": question,
+    def generate(self, question, passages, decision_context, history=""):
+        self.calls.append({"stage": "generate", "question": question, "history": history,
                            "files": {p.filename for p in passages}, "context": decision_context})
         if self.fail_generate:
             raise LLMError("The language model service is unavailable.")
