@@ -13,7 +13,6 @@ The core design idea is to **separate the jobs of an LLM from the jobs of specia
 
 The LLM never decides whether someone is eligible. It translates the question and the policy into structured specs, and the System 1 evaluators compute the outcome.
 
-For a plain-English, step-by-step explanation of how a question is answered (with a worked example, the files involved and the API calls), see **[ARCHITECTURE.md](ARCHITECTURE.md)**.
 
 ---
 
