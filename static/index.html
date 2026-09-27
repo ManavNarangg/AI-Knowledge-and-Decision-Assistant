@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Knowledge Assistant — Sign in</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+<div class="auth-wrap">
+  <div class="auth-box">
+    <div class="brand"><div class="logo">KD</div> Knowledge &amp; Decision Assistant</div>
+    <div class="card">
+      <div class="tabs">
+        <button id="tab-login" class="active" type="button">Log in</button>
+        <button id="tab-register" type="button">Create account</button>
+      </div>
+
+      <form id="login-form">
+        <label for="login-email">Email</label>
+        <input id="login-email" type="email" autocomplete="email" required>
+        <label for="login-password">Password</label>
+        <input id="login-password" type="password" autocomplete="current-password" required>
+        <div id="login-error" class="alert error hidden"></div>
+        <button class="btn primary" style="width:100%;margin-top:1rem;justify-content:center">Log in</button>
+      </form>
+
+      <form id="register-form" class="hidden">
+        <label for="reg-org">Organization name</label>
+        <input id="reg-org" type="text" required minlength="2" maxlength="100">
+        <label for="reg-email">Email</label>
+        <input id="reg-email" type="email" autocomplete="email" required>
+        <label for="reg-password">Password <span class="muted small">(min. 8 characters)</span></label>
+        <input id="reg-password" type="password" autocomplete="new-password" required minlength="8">
+        <div id="register-error" class="alert error hidden"></div>
+        <button class="btn primary" style="width:100%;margin-top:1rem;justify-content:center">Create organization</button>
+      </form>
+    </div>
+    <p class="muted small" style="text-align:center">Upload your PDFs, get a secure assistant link, embed it anywhere.</p>
+  </div>
+</div>
+<script>
+const $ = (id) => document.getElementById(id);
+function show(tab) {
+  const login = tab === "login";
+  $("tab-login").classList.toggle("active", login);
+  $("tab-register").classList.toggle("active", !login);
+  $("login-form").classList.toggle("hidden", !login);
+  $("register-form").classList.toggle("hidden", login);
+}
+$("tab-login").onclick = () => show("login");
+$("tab-register").onclick = () => show("register");
+
+async function submit(url, body, errorEl) {
+  errorEl.classList.add("hidden");
+  try {
+    const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.detail || "Something went wrong.");
+    location.href = "/dashboard";
+  } catch (e) {
+    errorEl.textContent = e.message;
+    errorEl.classList.remove("hidden");
+  }
+}
+$("login-form").onsubmit = (e) => { e.preventDefault();
+  submit("/api/auth/login", { email: $("login-email").value, password: $("login-password").value }, $("login-error")); };
+$("register-form").onsubmit = (e) => { e.preventDefault();
+  submit("/api/auth/register", { org_name: $("reg-org").value, email: $("reg-email").value, password: $("reg-password").value }, $("register-error")); };
+
+fetch("/api/admin/me").then((r) => { if (r.ok) location.href = "/dashboard"; });
+</script>
+</body>
+</html>

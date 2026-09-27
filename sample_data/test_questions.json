@@ -1,0 +1,94 @@
+[
+  {
+    "id": "NB-1", "org": "Northbridge University", "category": "direct information",
+    "question": "What is the application deadline for the Merit Scholarship?",
+    "expected": "March 31; decisions by May 15.", "expected_sources": ["Scholarship_Rules.pdf p1", "Student_Services_Guide.pdf p1"]
+  },
+  {
+    "id": "NB-2", "org": "Northbridge University", "category": "policy",
+    "question": "What is the rule about combining a sports scholarship with other awards?",
+    "expected": "Max two awards; sports + merit only if sports award < $5,000/yr; total capped at $24,000 tuition.",
+    "expected_sources": ["Scholarship_Rules.pdf p5"]
+  },
+  {
+    "id": "NB-3", "org": "Northbridge University", "category": "procedural",
+    "question": "How do I apply for the Merit Scholarship and what documents do I need?",
+    "expected": "Student Portal > Financial Aid; transcript, personal statement (<=800 words), two academic references; before March 31.",
+    "expected_sources": ["Student_Services_Guide.pdf p1"]
+  },
+  {
+    "id": "NB-4", "org": "Northbridge University", "category": "multi-condition decision (multiple structured decisions)",
+    "question": "I'm a second-year full-time student with a 3.72 GPA and no misconduct record. I already have a sports scholarship worth $4,000 a year. Am I eligible for the Merit Scholarship, and which tier would I get?",
+    "expected": "YES - all boolean requirements pass (full-time, year 2, GPA>=3.5, no misconduct, sports award < $5,000, <=2 awards); choice decision selects Silver tier ($6,000).",
+    "expected_sources": ["Scholarship_Rules.pdf p2", "Scholarship_Rules.pdf p3", "Scholarship_Rules.pdf p5"]
+  },
+  {
+    "id": "NB-5", "org": "Northbridge University", "category": "multi-condition decision",
+    "question": "I'm a third-year full-time student with a GPA of 3.9, but my athletic scholarship is $6,000 per year. Can I also get the Merit Scholarship?",
+    "expected": "NO - stacking rule fails (sports award >= $5,000) even though GPA/year/enrollment pass.",
+    "expected_sources": ["Scholarship_Rules.pdf p2", "Scholarship_Rules.pdf p5"]
+  },
+  {
+    "id": "NB-6", "org": "Northbridge University", "category": "multi-condition decision (missing facts)",
+    "question": "I'm a first-year student with a 3.8 GPA. Am I eligible for the Merit Scholarship?",
+    "expected": "NO - first-year students are not eligible (they are considered for the Entrance Award).",
+    "expected_sources": ["Scholarship_Rules.pdf p2"]
+  },
+  {
+    "id": "NB-7", "org": "Northbridge University", "category": "multi-condition decision",
+    "question": "Can I take 20 credits next semester? My GPA is 3.2 and my advisor has approved it in writing.",
+    "expected": "YES - GPA >= 3.0, advisor approval, 20 <= 21 max.",
+    "expected_sources": ["Academic_Policies.pdf p3"]
+  },
+  {
+    "id": "NB-8", "org": "Northbridge University", "category": "comparison",
+    "question": "What is the difference between the Merit Scholarship and the Need-Based Grant?",
+    "expected": "Merit: academic, GPA>=3.5, years 2-4, full-time, $5k-$7.5k. Need-based: income < $60k, GPA>=2.5, part-time allowed, first-years allowed, up to $8k.",
+    "expected_sources": ["Scholarship_Rules.pdf p2", "Scholarship_Rules.pdf p4"]
+  },
+  {
+    "id": "NB-9", "org": "Northbridge University", "category": "not in knowledge base",
+    "question": "What is on the cafeteria menu this Friday?",
+    "expected": "Not in the knowledge base - no invented answer.", "expected_sources": []
+  },
+  {
+    "id": "AC-1", "org": "Acme Logistics", "category": "direct information",
+    "question": "What is the daily meal limit for international travel?",
+    "expected": "$100 per day.", "expected_sources": ["Expense_Reimbursement_Policy.pdf p1"]
+  },
+  {
+    "id": "AC-2", "org": "Acme Logistics", "category": "multi-condition decision (multiple structured decisions)",
+    "question": "I've worked at Acme for 8 months, my last performance rating was 4, my manager is supportive, and I work in dispatch. Can I work from home 3 days a week?",
+    "expected": "NO - dispatch is an on-site essential role; other conditions pass.",
+    "expected_sources": ["Remote_Work_Policy.pdf p1"]
+  },
+  {
+    "id": "AC-3", "org": "Acme Logistics", "category": "decision (choice)",
+    "question": "I have 3 years of service. How many days of annual leave am I entitled to, and how many can I carry over?",
+    "expected": "20 days (2-5 year tier); up to 5 days carry-over, used by March 31.",
+    "expected_sources": ["Leave_Policy.pdf p1"]
+  },
+  {
+    "id": "AC-4", "org": "Acme Logistics", "category": "procedural",
+    "question": "How do I submit an expense claim?",
+    "expected": "ExpensePoint steps 1-4, receipts attached, paid within 10 business days of approval.",
+    "expected_sources": ["Expense_Reimbursement_Policy.pdf p3"]
+  },
+  {
+    "id": "AC-5", "org": "Acme Logistics", "category": "comparison",
+    "question": "How does hybrid remote work compare to fully remote work?",
+    "expected": "Hybrid: up to 3 days, 6 months, rating>=3, not on-site essential, manager approval. Fully remote: 2+ years, rating>=4, Tech/Finance/HR, director approval.",
+    "expected_sources": ["Remote_Work_Policy.pdf p1", "Remote_Work_Policy.pdf p2"]
+  },
+  {
+    "id": "AC-6", "org": "Acme Logistics", "category": "not in knowledge base",
+    "question": "What is the company's stock option vesting schedule?",
+    "expected": "Not in the knowledge base.", "expected_sources": []
+  },
+  {
+    "id": "ISO-1", "org": "Acme Logistics", "category": "tenant isolation",
+    "question": "What GPA do I need for the Merit Scholarship?",
+    "expected": "Acme's assistant must NOT answer from Northbridge's documents -> not in knowledge base.",
+    "expected_sources": []
+  }
+]

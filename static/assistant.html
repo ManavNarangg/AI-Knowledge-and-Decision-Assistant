@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>Assistant</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+<div class="chat">
+  <div class="chat-head">
+    <div class="logo" id="org-initial">?</div>
+    <div>
+      <div style="font-weight:700" id="org-name">Assistant</div>
+      <div class="muted small">Answers come from this organization's documents</div>
+    </div>
+  </div>
+  <div class="chat-log" id="log">
+    <div class="msg bot">
+      <p>Hi! Ask me anything about <span id="org-name-2">this organization</span>'s policies and documents. I'll cite the pages I used.</p>
+      <p class="muted small">You can include your own details (e.g. year, GPA, tenure) and I'll check them against the rules.</p>
+    </div>
+  </div>
+  <form class="chat-form" id="form">
+    <textarea id="q" placeholder="Type your question…" maxlength="1000" aria-label="Your question"></textarea>
+    <button class="btn primary" id="send">Send</button>
+  </form>
+</div>
+<script src="/static/assistant.js"></script>
+</body>
+</html>

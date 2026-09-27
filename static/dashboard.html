@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Dashboard — Knowledge Assistant</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand" style="margin:0"><div class="logo">KD</div><span id="org-name">…</span></div>
+  <div style="display:flex;gap:.75rem;align-items:center">
+    <span id="user-email" class="muted small"></span>
+    <button id="logout" class="btn small">Log out</button>
+  </div>
+</header>
+
+<main class="container">
+  <div id="flash" class="alert hidden"></div>
+
+  <div class="grid-2">
+    <!-- Assistant -->
+    <section class="card">
+      <div class="section-head">
+        <h2>Your assistant</h2>
+        <button id="regenerate" class="btn small danger" title="Invalidates the current link and embed code">Regenerate token</button>
+      </div>
+      <p class="muted small" style="margin-top:0">Anyone with this link can ask questions — no login required. It never exposes your documents or credentials.</p>
+      <label>Assistant URL</label>
+      <div class="copy-row">
+        <input id="assistant-url" type="text" readonly>
+        <button class="btn small" data-copy="assistant-url">Copy</button>
+        <a id="open-assistant" class="btn small" target="_blank" rel="noopener">Open</a>
+      </div>
+      <label>Embed code</label>
+      <div class="tabs" style="margin-top:.25rem">
+        <button id="tab-script" class="active" type="button">Chat bubble (script)</button>
+        <button id="tab-iframe" type="button">Inline (iframe)</button>
+      </div>
+      <pre id="embed-code" class="code"></pre>
+      <button id="copy-embed" class="btn small">Copy embed code</button>
+    </section>
+
+    <!-- Usage -->
+    <section class="card">
+      <div class="section-head"><h2>Usage</h2><button id="refresh-usage" class="btn small">Refresh</button></div>
+      <div class="stats">
+        <div class="stat"><div class="num" id="u-total">0</div><div class="lbl">Questions asked</div></div>
+        <div class="stat"><div class="num" id="u-answered">0</div><div class="lbl">Answered</div></div>
+        <div class="stat"><div class="num" id="u-unable">0</div><div class="lbl">Not in knowledge base</div></div>
+        <div class="stat"><div class="num" id="u-review">0</div><div class="lbl">Needs review / errors</div></div>
+      </div>
+      <div class="table-wrap">
+        <table><thead><tr><th>Recent question</th><th>Type</th><th>Status</th></tr></thead>
+          <tbody id="recent"><tr><td colspan="3" class="muted">No questions yet.</td></tr></tbody></table>
+      </div>
+    </section>
+  </div>
+
+  <!-- Knowledge base -->
+  <section class="card">
+    <div class="section-head">
+      <h2>Knowledge base</h2>
+      <span class="muted small" id="limits"></span>
+    </div>
+    <div class="meter"><span id="doc-meter" style="width:0"></span></div>
+    <div id="dropzone" class="dropzone">
+      <strong>Drop PDFs here</strong> or click to choose files
+      <div class="small">Max <span id="lim-pages">20</span> pages and <span id="lim-mb">10</span> MB per PDF</div>
+    </div>
+    <input id="file-input" type="file" accept="application/pdf,.pdf" multiple hidden>
+    <input id="replace-input" type="file" accept="application/pdf,.pdf" hidden>
+    <div id="upload-status"></div>
+    <div class="table-wrap" style="margin-top:1rem">
+      <table>
+        <thead><tr><th>Document</th><th>Pages</th><th>Size</th><th>Chunks</th><th>Uploaded</th><th></th></tr></thead>
+        <tbody id="docs"><tr><td colspan="6" class="muted">No documents yet — upload your first PDF above.</td></tr></tbody>
+      </table>
+    </div>
+  </section>
+</main>
+<script src="/static/dashboard.js"></script>
+</body>
+</html>

@@ -1,0 +1,12 @@
+fastapi>=0.115
+uvicorn[standard]>=0.30
+python-multipart>=0.0.9
+pypdf>=5.0
+pypdfium2>=4.30        # renders scanned pages for OCR
+anthropic>=1.8
+httpx>=0.27
+python-dotenv>=1.0
+# sample data generation + tests
+fpdf2>=2.8
+pytest>=8.0
+

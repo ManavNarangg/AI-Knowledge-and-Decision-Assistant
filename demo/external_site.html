@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Customer Website — Embed Demo</title>
+  <style>
+    body { margin: 0; font-family: Georgia, "Times New Roman", serif; background: #fbf8f3; color: #222; }
+    header { background: #14365d; color: #fff; padding: 18px 16px; }
+    header h1 { margin: 0; font-size: 1.4rem; }
+    nav a { color: #cfe0f5; margin-right: 1rem; font-family: system-ui, sans-serif; font-size: .9rem; text-decoration: none; }
+    main { max-width: 820px; margin: 0 auto; padding: 24px 16px 120px; }
+    .hint { font-family: system-ui, sans-serif; font-size: .9rem; background: #fff; border: 1px dashed #b9c3cf; border-radius: 8px; padding: 12px 14px; }
+    code { background: #eef1f5; padding: 1px 4px; border-radius: 4px; }
+    .inline-slot { margin-top: 24px; }
+  </style>
+</head>
+<body>
+<header>
+  <h1>A third-party website</h1>
+  <nav><a href="#">Home</a><a href="#">Admissions</a><a href="#">Careers</a><a href="#">Contact</a></nav>
+</header>
+<main>
+  <h2>Welcome</h2>
+  <p>This page stands in for an organization's public website. It is served from a <em>different origin</em>
+     than the assistant platform, which shows that the embed works cross-site.</p>
+  <p>Click the chat bubble in the corner to ask the organization's assistant a question.</p>
+
+  <div class="hint">
+    <strong>How to use this demo page</strong><br>
+    Option 1: copy the embed code from the dashboard and paste it where the <code>PASTE EMBED CODE HERE</code>
+    comment is in this file.<br>
+    Option 2: open this page as <code>external_site.html?token=ast_...&amp;host=http://localhost:8000</code>
+    and the embed script is added for you (add <code>&amp;mode=iframe</code> for the inline version).
+  </div>
+
+  <div class="inline-slot" id="inline-slot"></div>
+
+  <!-- PASTE EMBED CODE HERE -->
+
+</main>
+<script>
+  (function () {
+    var params = new URLSearchParams(location.search);
+    var token = params.get("token");
+    var host = (params.get("host") || "http://localhost:8000").replace(/\/$/, "");
+    if (!token) return;
+    if (params.get("mode") === "iframe") {
+      var f = document.createElement("iframe");
+      f.src = host + "/a/" + encodeURIComponent(token);
+      f.width = "100%"; f.height = "600"; f.title = "Knowledge assistant";
+      f.style.cssText = "border:1px solid #ddd;border-radius:12px;max-width:420px";
+      document.getElementById("inline-slot").appendChild(f);
+    } else {
+      var s = document.createElement("script");
+      s.src = host + "/embed.js";
+      s.async = true;
+      s.setAttribute("data-assistant-token", token);
+      document.body.appendChild(s);
+    }
+  })();
+</script>
+</body>
+</html>
